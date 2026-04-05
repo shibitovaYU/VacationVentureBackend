@@ -1,7 +1,13 @@
 import math
-from typing import Dict, List, Tuple
+from typing import Dict, List, Set, Tuple
 
-from app.models import EventType, RecommendationValue, RecoEvent
+from app.models import (
+    EventType,
+    GlobalRecommendationsSnapshot,
+    RecommendationValue,
+    RecoEvent,
+    UserRecommendationsResponse,
+)
 
 
 EVENT_TYPE_WEIGHTS: Dict[EventType, float] = {
@@ -65,6 +71,11 @@ def build_user_vector(events: List[RecoEvent]) -> Tuple[List[str], List[float], 
     return feature_order, vector, rounded_scores
 
 
+def build_raw_scores(events: List[RecoEvent]) -> Dict[str, float]:
+    _, _, raw_scores = build_user_vector(events)
+    return raw_scores
+
+
 def top_recommendation(raw_scores: Dict[str, float], prefix: str) -> RecommendationValue:
     candidates = {
         feature_name[len(prefix):]: score
@@ -78,3 +89,27 @@ def top_recommendation(raw_scores: Dict[str, float], prefix: str) -> Recommendat
     if best_score <= 0:
         return RecommendationValue(value=None, score=round(best_score, 3))
     return RecommendationValue(value=best_value, score=round(best_score, 3))
+
+
+def build_recommendations_response(
+    user_id: str, event_count: int, raw_scores: Dict[str, float]
+) -> UserRecommendationsResponse:
+    return UserRecommendationsResponse(
+        user_id=user_id,
+        event_count=event_count,
+        preferred_departure_time=top_recommendation(raw_scores, "time_of_day:"),
+        recommended_departure_city=top_recommendation(raw_scores, "departure_city:"),
+        favorite_airline=top_recommendation(raw_scores, "airline:"),
+    )
+
+
+def build_global_recommendations_snapshot(
+    events: List[RecoEvent],
+) -> GlobalRecommendationsSnapshot:
+    raw_scores = build_raw_scores(events)
+    user_ids: Set[str] = {event.user_id for event in events if event.user_id}
+    return GlobalRecommendationsSnapshot(
+        event_count=len(events),
+        user_count=len(user_ids),
+        raw_scores=raw_scores,
+    )

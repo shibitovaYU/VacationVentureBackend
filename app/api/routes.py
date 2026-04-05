@@ -2,8 +2,13 @@ from fastapi import APIRouter, Depends
 
 from app.auth import get_current_uid
 from app.models import RecoEvent, UserRecommendationsResponse, UserVectorResponse
-from app.services.recommendations import build_user_vector, top_recommendation
+from app.services.recommendations import (
+    build_raw_scores,
+    build_recommendations_response,
+    build_user_vector,
+)
 from app.storage.event_log import append_event, read_user_events
+from app.storage.global_recommendations import read_global_recommendations
 
 
 router = APIRouter()
@@ -36,11 +41,17 @@ def get_user_vector(uid: str = Depends(get_current_uid)):
 @router.get("/users/me/recommendations", response_model=UserRecommendationsResponse)
 def get_user_recommendations(uid: str = Depends(get_current_uid)):
     events = read_user_events(uid)
-    _, _, raw_scores = build_user_vector(events)
-    return UserRecommendationsResponse(
+    if events:
+        return build_recommendations_response(
+            user_id=uid,
+            event_count=len(events),
+            raw_scores=build_raw_scores(events),
+        )
+
+    snapshot = read_global_recommendations()
+    fallback_scores = snapshot.raw_scores if snapshot else {}
+    return build_recommendations_response(
         user_id=uid,
-        event_count=len(events),
-        preferred_departure_time=top_recommendation(raw_scores, "time_of_day:"),
-        recommended_departure_city=top_recommendation(raw_scores, "departure_city:"),
-        favorite_airline=top_recommendation(raw_scores, "airline:"),
+        event_count=0,
+        raw_scores=fallback_scores,
     )

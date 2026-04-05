@@ -1,0 +1,11 @@
+{
+  "event_count": 2,
+  "user_count": 1,
+  "calculated_at_ms": 1775382465407,
+  "raw_scores": {
+    "time_of_day:morning": 4.0,
+    "departure_city:Москва": 4.0,
+    "airline:SU": 1.0,
+    "airline:FV": 3.0
+  }
+}

@@ -58,3 +58,10 @@ class UserRecommendationsResponse(BaseModel):
     preferred_departure_time: RecommendationValue
     recommended_departure_city: RecommendationValue
     favorite_airline: RecommendationValue
+
+
+class GlobalRecommendationsSnapshot(BaseModel):
+    event_count: int
+    user_count: int
+    calculated_at_ms: int = Field(default_factory=lambda: int(time.time() * 1000))
+    raw_scores: Dict[str, float]

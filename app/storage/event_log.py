@@ -38,3 +38,21 @@ def read_user_events(uid: str) -> List[RecoEvent]:
             except Exception:
                 continue
     return events
+
+
+def read_all_events() -> List[RecoEvent]:
+    if not EVENT_LOG_PATH.exists():
+        return []
+
+    events: List[RecoEvent] = []
+    with EVENT_LOG_PATH.open("r", encoding="utf-8") as file_obj:
+        for line in file_obj:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+                events.append(RecoEvent.model_validate(payload))
+            except Exception:
+                continue
+    return events
