@@ -1,11 +1,13 @@
-# Логи
-*.jsonl
-
 # venv
-.venv
+venv
+
 
 # keys
 keys
 
 # __pycache__
-__pycache__
+**/__pycache__
+*.pyc
+
+# ide
+.idea
