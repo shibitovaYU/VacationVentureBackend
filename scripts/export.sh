@@ -1,0 +1,1 @@
+export FIREBASE_WEB_API_KEY="AIzaSyDAdnq4QUylW7cDvuYiokFy9bhyvSm1t80"

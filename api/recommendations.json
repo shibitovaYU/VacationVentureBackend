@@ -1,0 +1,16 @@
+{
+    "user_id": "rNkLNJfqEZXTSu177tR9ZcreM503",
+    "event_count": 2,
+    "preferred_departure_time": {
+        "value": "morning",
+        "score": 4.0
+    },
+    "recommended_departure_city": {
+        "value": "Москва",
+        "score": 4.0
+    },
+    "favorite_airline": {
+        "value": "FV",
+        "score": 3.0
+    }
+}
