@@ -1,9 +1,14 @@
 import math
+import re
+from datetime import datetime
 from typing import Dict, List, Set, Tuple
 
 from app.models import (
     EventType,
+    FlightRankingResponse,
+    FlightSegment,
     GlobalRecommendationsSnapshot,
+    RankedFlight,
     RecommendationValue,
     RecoEvent,
     UserRecommendationsResponse,
@@ -17,8 +22,18 @@ EVENT_TYPE_WEIGHTS: Dict[EventType, float] = {
 }
 
 
+def extract_hour(departure_time: str) -> int:
+    try:
+        return datetime.fromisoformat(departure_time.replace("Z", "+00:00")).hour
+    except ValueError:
+        match = re.search(r"(?:^|[T\s])(\d{1,2}):", departure_time)
+        if not match:
+            raise
+        return int(match.group(1))
+
+
 def detect_time_of_day(departure_time: str) -> str:
-    hour = int(departure_time.split(":", maxsplit=1)[0])
+    hour = extract_hour(departure_time)
     if 6 <= hour < 12:
         return "morning"
     if 12 <= hour < 18:
@@ -38,6 +53,16 @@ def extract_departure_city(title: str) -> str:
 
 def extract_airline_code(item_id: str) -> str:
     return item_id[:2].upper()
+
+
+def normalize_feature_scores(raw_scores: Dict[str, float]) -> Dict[str, float]:
+    norm = math.sqrt(sum(value * value for value in raw_scores.values()))
+    if norm == 0:
+        return {feature_name: 0.0 for feature_name in raw_scores}
+    return {
+        feature_name: value / norm
+        for feature_name, value in raw_scores.items()
+    }
 
 
 def event_feature_weights(event: RecoEvent) -> Dict[str, float]:
@@ -60,12 +85,8 @@ def build_user_vector(events: List[RecoEvent]) -> Tuple[List[str], List[float], 
             raw_scores[feature_name] = raw_scores.get(feature_name, 0.0) + weight
 
     feature_order = sorted(raw_scores)
-    raw_vector = [raw_scores[name] for name in feature_order]
-    norm = math.sqrt(sum(value * value for value in raw_vector))
-    if norm == 0:
-        vector = [0.0 for _ in raw_vector]
-    else:
-        vector = [round(value / norm, 6) for value in raw_vector]
+    normalized_scores = normalize_feature_scores(raw_scores)
+    vector = [round(normalized_scores[name], 6) for name in feature_order]
 
     rounded_scores = {name: round(score, 3) for name, score in raw_scores.items()}
     return feature_order, vector, rounded_scores
@@ -112,4 +133,83 @@ def build_global_recommendations_snapshot(
         event_count=len(events),
         user_count=len(user_ids),
         raw_scores=raw_scores,
+    )
+
+
+def extract_airline_code_from_flight(flight: FlightSegment) -> str:
+    carrier = flight.thread.carrier if flight.thread else None
+    codes = carrier.codes if carrier else None
+    for value in (
+        codes.iata if codes else None,
+        codes.sirena if codes else None,
+        str(carrier.code) if carrier and carrier.code is not None else None,
+        flight.thread.number[:2] if flight.thread and flight.thread.number else None,
+    ):
+        if value:
+            return value.upper()
+    return ""
+
+
+def build_flight_feature_scores(flight: FlightSegment) -> Dict[str, float]:
+    scores: Dict[str, float] = {}
+
+    if flight.departure:
+        try:
+            scores[f"time_of_day:{detect_time_of_day(flight.departure)}"] = 1.0
+        except (TypeError, ValueError):
+            pass
+
+    departure_station = flight.from_
+    departure_city = None
+    if flight.thread and flight.thread.title:
+        departure_city = extract_departure_city(flight.thread.title)
+    if departure_station:
+        departure_city = departure_city or (
+            departure_station.title
+            or departure_station.popular_title
+            or departure_station.short_title
+            or departure_station.code
+        )
+    if departure_city:
+        scores[f"departure_city:{departure_city.strip()}"] = 1.0
+
+    airline_code = extract_airline_code_from_flight(flight)
+    if airline_code:
+        scores[f"airline:{airline_code}"] = 1.0
+
+    return scores
+
+
+def cosine_similarity(left_scores: Dict[str, float], right_scores: Dict[str, float]) -> float:
+    if not left_scores or not right_scores:
+        return 0.0
+
+    left_vector = normalize_feature_scores(left_scores)
+    right_vector = normalize_feature_scores(right_scores)
+    dot_product = sum(
+        left_vector.get(feature_name, 0.0) * right_vector.get(feature_name, 0.0)
+        for feature_name in right_vector
+    )
+    return round(dot_product, 6)
+
+
+def rank_flights(
+    flights: List[FlightSegment],
+    user_scores: Dict[str, float],
+) -> FlightRankingResponse:
+    scored_flights = [
+        (
+            index,
+            cosine_similarity(user_scores, build_flight_feature_scores(flight)),
+            flight,
+        )
+        for index, flight in enumerate(flights)
+    ]
+    scored_flights.sort(key=lambda item: (-item[1], item[0]))
+
+    return FlightRankingResponse(
+        ranked_flights=[
+            RankedFlight(rank=rank, score=score, flight=flight)
+            for rank, (_, score, flight) in enumerate(scored_flights, start=1)
+        ]
     )

@@ -1,14 +1,20 @@
 from fastapi import APIRouter, Depends
 
 from app.auth import get_current_uid
-from app.models import RecoEvent, UserRecommendationsResponse, UserVectorResponse
+from app.models import (
+    FlightRankingRequest,
+    FlightRankingResponse,
+    RecoEvent,
+    UserRecommendationsResponse,
+    UserVectorResponse,
+)
 from app.services.recommendations import (
     build_raw_scores,
     build_recommendations_response,
     build_user_vector,
+    rank_flights,
 )
 from app.storage.event_log import append_event, read_user_events
-from app.storage.global_recommendations import read_global_recommendations
 
 
 router = APIRouter()
@@ -55,3 +61,19 @@ def get_user_recommendations(uid: str = Depends(get_current_uid)):
         event_count=0,
         raw_scores=fallback_scores,
     )
+
+
+@router.post(
+    "/users/me/flights/rank",
+    response_model=FlightRankingResponse,
+    response_model_exclude_none=True,
+)
+def rank_user_flights(
+    request: FlightRankingRequest,
+    uid: str = Depends(get_current_uid),
+):
+    events = read_user_events(uid)
+    if not events:
+        return rank_flights(request.flights, {})
+
+    return rank_flights(request.flights, build_raw_scores(events))
